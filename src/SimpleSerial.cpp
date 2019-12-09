@@ -148,7 +148,7 @@ bool SimpleSerial::read_n(uint8_t *buf, int to_read) {
 void SimpleSerial::loop() {
   // Just needs to be larger than the largest message possible.
   static constexpr int max_msg_length = 50;
-  uint8_t buf[50];
+  uint8_t buf[max_msg_length];
 
   while (1) {
     // Read first magic
