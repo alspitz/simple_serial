@@ -1,0 +1,21 @@
+<launch>
+  <arg name="vehicle" default="$(optenv RIS_VEHICLE_NAME danaus06)"/>
+  <arg name="config_pkg" default="$(find vehicle_configs)"/>
+  <arg name="odom_topic" default="odom"/>
+
+  <arg name="mavlink_param_file" default="$(arg config_pkg)/$(arg vehicle)/mavlink.yaml"/>
+
+  <group ns="$(arg vehicle)">
+    <node pkg="simple_serial"
+      name="px4"
+      type="simple_serial"
+      output="screen"
+      clear_params="true">
+      <param name="serial_device" value="/dev/ttyUSB0"/>
+      <param name="baud" value="921600"/>
+      <param name="full_odom" value="true"/>
+      <remap from="~imu/data" to="~imu"/>
+      <remap from="~odom" to="vicon_odom"/>
+    </node>
+  </group>
+</launch>
