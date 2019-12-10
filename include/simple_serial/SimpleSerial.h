@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include <ros/ros.h>
 
 #include <nav_msgs/Odometry.h>
@@ -13,6 +15,7 @@ class SimpleSerial {
     void loop();
 
   private:
+    bool openPort();
     bool loadParameters(const ros::NodeHandle& n);
     bool registerCallbacks(const ros::NodeHandle& n);
 
@@ -23,7 +26,11 @@ class SimpleSerial {
 
     bool read_n(uint8_t *buf, int n_read);
 
+    std::string device_name_;
+    int baud_;
+
     int fd_;
+    bool opened_{false};
     float yaw_{0.0f};
 
     ros::Subscriber casc_sub_;

@@ -35,22 +35,33 @@ bool SimpleSerial::initialize(const ros::NodeHandle& n) {
 }
 
 bool SimpleSerial::loadParameters(const ros::NodeHandle& n) {
-  std::string device_name;
-  if (!pu::get("serial_device", device_name)) {
+  if (!pu::get("serial_device", device_name_)) {
     ROS_ERROR("SimpleSerial: Could not get serial_device parameter");
     return false;
   }
 
-  int baud;
-  if (!pu::get("baud", baud)) {
+  if (!pu::get("baud", baud_)) {
     ROS_ERROR("SimpleSerial: Could not get baud parameter");
     return false;
   }
 
-  fd_ = open(device_name.c_str(), O_RDWR);
+  if (!openPort()) {
+    ROS_ERROR("SimpleSerial: Could not open port.");
+    return false;
+  }
+
+  opened_ = true;
+
+  pu::get("full_odom", full_odom_, false);
+
+  return true;
+}
+
+bool SimpleSerial::openPort() {
+  fd_ = open(device_name_.c_str(), O_RDWR | O_NOCTTY);
 
   if (fd_ < 0) {
-    ROS_ERROR("Could not open serial port %s", device_name.c_str());
+    ROS_ERROR_THROTTLE(0.5, "Could not open serial port %s", device_name_.c_str());
     return false;
   }
 
@@ -58,7 +69,7 @@ bool SimpleSerial::loadParameters(const ros::NodeHandle& n) {
   memset(&tty, 0, sizeof(tty));
 
   if (tcgetattr(fd_, &tty) != 0) {
-    ROS_ERROR("Could not real serial port settings on %s", device_name.c_str());
+    ROS_ERROR("Could not read serial port settings on %s", device_name_.c_str());
     return false;
   }
 
@@ -76,32 +87,31 @@ bool SimpleSerial::loadParameters(const ros::NodeHandle& n) {
   tty.c_cc[VTIME] = 1;
   tty.c_cc[VMIN] = 0;
 
-  cfsetispeed(&tty, baud);
-  cfsetospeed(&tty, baud);
+  cfsetispeed(&tty, baud_);
+  cfsetospeed(&tty, baud_);
 
   ROS_INFO("Serial settings are: %d %d %d %d", tty.c_cflag, tty.c_lflag, tty.c_oflag, tty.c_iflag);
 
   if (tcsetattr(fd_, TCSANOW, &tty) != 0) {
-    ROS_ERROR("SimpleSerial: Could not save termios settings on %s", device_name.c_str());
+    ROS_ERROR("SimpleSerial: Could not save termios settings on %s", device_name_.c_str());
     return false;
   }
 
   struct serial_struct serinfo;
   if (ioctl(fd_, TIOCGSERIAL, &serinfo)) {
-    ROS_ERROR("SimpleSerial: Could not get serial info on %s", device_name.c_str());
+    ROS_ERROR("SimpleSerial: Could not get serial info on %s", device_name_.c_str());
     return false;
   }
 
   serinfo.flags |= ASYNC_LOW_LATENCY;
   if (ioctl(fd_, TIOCSSERIAL, &serinfo)) {
-    ROS_ERROR("SimpleSerial: Could not set serial info on %s", device_name.c_str());
+    ROS_ERROR("SimpleSerial: Could not set serial info on %s", device_name_.c_str());
     return false;
   }
 
-  pu::get("full_odom", full_odom_, false);
-
   return true;
 }
+
 
 bool SimpleSerial::registerCallbacks(const ros::NodeHandle& n) {
   ros::NodeHandle ln(n);
@@ -134,7 +144,12 @@ bool SimpleSerial::read_n(uint8_t *buf, int to_read) {
   while (n_read < to_read) {
     int ret = read(fd_, buf, to_read - n_read);
 
-    if (ret <= 0) {
+    if (ret < 0) {
+      return false;
+    }
+    else if (ret == 0) {
+      opened_ = false;
+      close(fd_);
       return false;
     }
 
@@ -151,12 +166,38 @@ void SimpleSerial::loop() {
   uint8_t buf[max_msg_length];
 
   while (1) {
+    ros::spinOnce();
+
+    if (!ros::ok()) {
+      ROS_INFO("Shutting down.");
+      break;
+    }
+
+    if (!opened_) {
+      ROS_WARN_THROTTLE(0.5, "FD is now closed. Attempting to reopen...");
+      if (openPort()) {
+        opened_ = true;
+        ROS_INFO("Port opened");
+      }
+      else {
+        usleep(20000);
+        continue;
+      }
+    }
+
     // Read first magic
     int ret = read(fd_, buf, 1);
-    if (ret <= 0) {
-      ROS_WARN("Read failure: magic 1");
+    if (ret < 0) {
+      ROS_WARN("Read failure: magic 1 (%d)", ret);
+      perror("read failure: ");
       continue;
     }
+    else if (ret == 0) {
+      opened_ = false;
+      close(fd_);
+      continue;
+    }
+
     if (buf[0] != MAGIC) {
       ROS_WARN("Unexpected byte");
       continue;
@@ -164,10 +205,17 @@ void SimpleSerial::loop() {
 
     // Read second magic
     ret = read(fd_, buf + 1, 1);
-    if (ret <= 0) {
+    if (ret < 0) {
       ROS_WARN("Read failure: magic 2");
+      perror("read failure: ");
       continue;
     }
+    if (ret == 0) {
+      opened_ = false;
+      close(fd_);
+      continue;
+    }
+
     if (buf[1] != MAGIC) {
       ROS_WARN("Got only one magic!!!");
       continue;
@@ -230,12 +278,6 @@ void SimpleSerial::loop() {
     else {
       ROS_WARN("Unsupported msg id: %d", msg_id);
     }
-
-    ros::spinOnce();
-
-    if (!ros::ok()) {
-      break;
-    }
   }
 }
 
@@ -248,6 +290,10 @@ void SimpleSerial::odomCallbackFull(const nav_msgs::Odometry::ConstPtr& msg) {
 }
 
 void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand::ConstPtr& ros_msg) {
+  if (!opened_) {
+    return;
+  }
+
   struct cmd_msg msg;
   uint8_t* buf = (uint8_t*)(&msg);
 
@@ -273,6 +319,10 @@ void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand
 }
 
 bool SimpleSerial::motorServiceCallback(quadrotor_srvs::Toggle::Request& mreq, quadrotor_srvs::Toggle::Response& mres) {
+  if (!opened_) {
+    return false;
+  }
+
   mres.status = mreq.enable;
 
   struct enable_msg msg;
