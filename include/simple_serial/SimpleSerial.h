@@ -6,6 +6,7 @@
 
 #include <nav_msgs/Odometry.h>
 #include <quadrotor_msgs/CascadedCommand.h>
+#include <quadrotor_msgs/RPMCommand.h>
 #include <quadrotor_srvs/Toggle.h>
 #include <robot_msgs/OdomNoCov.h>
 
@@ -22,6 +23,7 @@ class SimpleSerial {
     void odomCallback(const robot_msgs::OdomNoCov::ConstPtr& msg);
     void odomCallbackFull(const nav_msgs::Odometry::ConstPtr& msg);
     void cascadedCommandCallback(const quadrotor_msgs::CascadedCommand::ConstPtr& msg);
+    void rpmCallback(const quadrotor_msgs::RPMCommand::ConstPtr& msg);
     bool motorServiceCallback(quadrotor_srvs::Toggle::Request& mreq, quadrotor_srvs::Toggle::Response& mres);
 
     bool read_n(uint8_t *buf, int n_read);
@@ -33,6 +35,7 @@ class SimpleSerial {
     bool opened_{false};
     float yaw_{0.0f};
 
+    ros::Subscriber rpm_sub_;
     ros::Subscriber casc_sub_;
     bool full_odom_{false};
     ros::Subscriber odom_sub_;

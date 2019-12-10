@@ -117,12 +117,13 @@ bool SimpleSerial::registerCallbacks(const ros::NodeHandle& n) {
   ros::NodeHandle ln(n);
 
   if (full_odom_) {
-    odom_sub_ = ln.subscribe("odom", 1, &SimpleSerial::odomCallbackFull, this, ros::TransportHints().udp());
+    odom_sub_ = ln.subscribe("odom", 1, &SimpleSerial::odomCallbackFull, this, ros::TransportHints().tcpNoDelay());
   }
   else {
-    odom_sub_ = ln.subscribe("odom", 1, &SimpleSerial::odomCallback, this, ros::TransportHints().udp());
+    odom_sub_ = ln.subscribe("odom", 1, &SimpleSerial::odomCallback, this, ros::TransportHints().tcpNoDelay());
   }
   casc_sub_ = ln.subscribe("cascaded_cmd", 1, &SimpleSerial::cascadedCommandCallback, this, ros::TransportHints().tcpNoDelay());
+  rpm_sub_ = ln.subscribe("rpm_cmd", 1, &SimpleSerial::rpmCallback, this, ros::TransportHints().tcpNoDelay());
   motors_service_ = ln.advertiseService("motors", &SimpleSerial::motorServiceCallback, this);
 
   imu_pub_ = ln.advertise<sensor_msgs::Imu>("imu/data", 1, false);
@@ -289,6 +290,31 @@ void SimpleSerial::odomCallbackFull(const nav_msgs::Odometry::ConstPtr& msg) {
   yaw_ = gu::getYaw(gr::fromROS(msg->pose.pose.orientation));
 }
 
+void SimpleSerial::rpmCallback(const quadrotor_msgs::RPMCommand::ConstPtr& ros_msg) {
+  if (!opened_) {
+    return;
+  }
+
+  struct rpm_msg msg;
+  uint8_t* buf = (uint8_t*)(&msg);
+
+  msg.magic = MAGICFULL;
+  msg.length = sizeof(msg);
+  msg.sequence = 0;
+  msg.msg_id = MSG_ID_RPM;
+
+  msg.timestamp = ros_msg->header.stamp.toNSec() / 1000;
+  for (int i = 0; i < 4; i++) {
+    msg.rpm[i] = ros_msg->motor_rpm[i];
+  }
+  msg.csum = compute_checksum(buf, sizeof(msg) - 1);
+
+  int ret = write(fd_, buf, sizeof(msg));
+  if (ret != sizeof(msg)) {
+    ROS_WARN("Failed to send cmd message: %d", ret);
+  }
+}
+
 void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand::ConstPtr& ros_msg) {
   if (!opened_) {
     return;
@@ -302,7 +328,7 @@ void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand
   msg.sequence = 0;
   msg.msg_id = MSG_ID_CMD;
 
-  msg.timestamp = ros_msg->header.stamp.nsec / 1000;
+  msg.timestamp = ros_msg->header.stamp.toNSec() / 1000;
   msg.thrust = -ros_msg->thrust;
   msg.q[0] = ros_msg->orientation.w;
   msg.q[1] = ros_msg->orientation.x;
