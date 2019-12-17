@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.8.3)
 project(simple_serial)
 
 find_package(catkin REQUIRED COMPONENTS
+  message_generation
   robot_msgs
   roscpp
   geometry_utils
@@ -9,6 +10,17 @@ find_package(catkin REQUIRED COMPONENTS
   nav_msgs
   quadrotor_msgs
   quadrotor_srvs
+)
+
+add_message_files(
+  FILES
+  IMUDebug.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  geometry_msgs
 )
 
 catkin_package(
@@ -40,6 +52,7 @@ target_link_libraries(${PROJECT_NAME}
 add_dependencies(${PROJECT_NAME}
   quadrotor_msgs_generate_messages_cpp
   quadrotor_srvs_generate_messages_cpp
+  ${PROJECT_NAME}_generate_messages_cpp
 )
 
 add_executable(${PROJECT_NAME}_node

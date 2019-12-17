@@ -13,8 +13,7 @@
       clear_params="true">
       <param name="serial_device" value="/dev/ttyUSB0"/>
       <param name="baud" value="921600"/>
-      <param name="full_odom" value="true"/>
-      <remap from="~imu/data" to="~imu"/>
+      <param name="full_odom" value="false"/>
       <remap from="~odom" to="vicon_odom"/>
     </node>
   </group>

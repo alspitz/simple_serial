@@ -39,6 +39,8 @@ MSG_START(imu)
   uint64_t timestamp;
   float accel[3];
   float gyro[3];
+  float accel_filt[3];
+  float gyro_filt[3];
   float roll;
   float pitch;
 MSG_END

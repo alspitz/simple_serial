@@ -9,7 +9,7 @@
 #include <parameter_utils/ParameterUtils.h>
 
 #include <quadrotor_msgs/RPMCommand.h>
-#include <sensor_msgs/Imu.h>
+#include <simple_serial/IMUDebug.h>
 
 #include <simple_serial/SimpleMavlink.h>
 
@@ -126,8 +126,8 @@ bool SimpleSerial::registerCallbacks(const ros::NodeHandle& n) {
   rpm_sub_ = ln.subscribe("rpm_cmd", 1, &SimpleSerial::rpmCallback, this, ros::TransportHints().tcpNoDelay());
   motors_service_ = ln.advertiseService("motors", &SimpleSerial::motorServiceCallback, this);
 
-  imu_pub_ = ln.advertise<sensor_msgs::Imu>("imu/data", 1, false);
-  rpm_pub_ = ln.advertise<quadrotor_msgs::RPMCommand>("rpm", 10, false);
+  imu_pub_ = ln.advertise<simple_serial::IMUDebug>("imu", 1, false);
+  rpm_pub_ = ln.advertise<quadrotor_msgs::RPMCommand>("rpm", 1, false);
 
   return true;
 }
@@ -163,7 +163,7 @@ bool SimpleSerial::read_n(uint8_t *buf, int to_read) {
 
 void SimpleSerial::loop() {
   // Just needs to be larger than the largest message possible.
-  static constexpr int max_msg_length = 50;
+  static constexpr int max_msg_length = 100;
   uint8_t buf[max_msg_length];
 
   while (1) {
@@ -269,11 +269,13 @@ void SimpleSerial::loop() {
 
       struct imu_msg* imu = (struct imu_msg*)buf;
 
-      sensor_msgs::Imu ros_msg;
+      simple_serial::IMUDebug ros_msg;
       ros_msg.header.stamp.fromNSec(imu->timestamp * 1000);
-      ros_msg.linear_acceleration = gr::toVector3(gu::Vector3(imu->accel[0], imu->accel[1], imu->accel[2]));
-      ros_msg.angular_velocity = gr::toVector3(gu::Vector3(imu->gyro[0], imu->gyro[1], imu->gyro[2]));
-      ros_msg.orientation = gr::ZYXToQuatMsg(gu::Vector3(imu->roll, imu->pitch, yaw_));
+      ros_msg.accel      = gr::toVector3(gu::Vector3(imu->accel     [0], imu->accel     [1], imu->accel     [2]));
+      ros_msg.accel_filt = gr::toVector3(gu::Vector3(imu->accel_filt[0], imu->accel_filt[1], imu->accel_filt[2]));
+      ros_msg.gyro       = gr::toVector3(gu::Vector3(imu->gyro      [0], imu->gyro      [1], imu->gyro      [2]));
+      ros_msg.gyro_filt  = gr::toVector3(gu::Vector3(imu->gyro_filt [0], imu->gyro_filt [1], imu->gyro_filt [2]));
+      ros_msg.euler = gr::toVector3(gu::Vector3(imu->roll, imu->pitch, yaw_));
       imu_pub_.publish(ros_msg);
     }
     else {
