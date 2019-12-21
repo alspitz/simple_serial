@@ -123,6 +123,7 @@ bool SimpleSerial::registerCallbacks(const ros::NodeHandle& n) {
     odom_sub_ = ln.subscribe("odom", 1, &SimpleSerial::odomCallback, this, ros::TransportHints().tcpNoDelay());
   }
   casc_sub_ = ln.subscribe("cascaded_cmd", 1, &SimpleSerial::cascadedCommandCallback, this, ros::TransportHints().tcpNoDelay());
+  gains_sub_ = ln.subscribe("cascaded_cmd_gains", 1, &SimpleSerial::cascadedCommandGainsCallback, this, ros::TransportHints().tcpNoDelay());
   rpm_sub_ = ln.subscribe("rpm_cmd", 1, &SimpleSerial::rpmCallback, this, ros::TransportHints().tcpNoDelay());
   motors_service_ = ln.advertiseService("motors", &SimpleSerial::motorServiceCallback, this);
 
@@ -343,6 +344,34 @@ void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand
   int ret = write(fd_, buf, sizeof(msg));
   if (ret != sizeof(msg)) {
     ROS_WARN("Failed to send cmd message: %d", ret);
+  }
+}
+
+void SimpleSerial::cascadedCommandGainsCallback(const quadrotor_msgs::CascadedCommandGains::ConstPtr& ros_msg) {
+  if (!opened_) {
+    return;
+  }
+
+  struct gains_msg msg;
+  uint8_t* buf = (uint8_t*)(&msg);
+
+  msg.magic = MAGICFULL;
+  msg.length = sizeof(msg);
+  msg.sequence = 0;
+  msg.msg_id = MSG_ID_GAINS;
+
+  msg.kR[0] = ros_msg->kR.x;
+  msg.kR[1] = ros_msg->kR.y;
+  msg.kR[2] = ros_msg->kR.z;
+  msg.kOm[0] = ros_msg->kOm.x;
+  msg.kOm[1] = ros_msg->kOm.y;
+  msg.kOm[2] = ros_msg->kOm.z;
+
+  msg.csum = compute_checksum(buf, sizeof(msg) - 1);
+
+  int ret = write(fd_, buf, sizeof(msg));
+  if (ret != sizeof(msg)) {
+    ROS_WARN("Failed to send gains message: %d", ret);
   }
 }
 

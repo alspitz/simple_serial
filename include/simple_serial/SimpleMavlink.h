@@ -6,6 +6,7 @@
 #define MSG_ID_ENABLE 1
 #define MSG_ID_CMD 2
 #define MSG_ID_IMU 3
+#define MSG_ID_GAINS 4
 
 #define META_SIZE 5
 
@@ -43,4 +44,9 @@ MSG_START(imu)
   float gyro_filt[3];
   float roll;
   float pitch;
+MSG_END
+
+MSG_START(gains)
+  float kR[3];
+  float kOm[3];
 MSG_END
