@@ -337,7 +337,12 @@ void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand
   msg.q[1] = ros_msg->orientation.x;
   msg.q[2] = -ros_msg->orientation.y;
   msg.q[3] = -ros_msg->orientation.z;
-  msg.yaw = -yaw_;
+  if (yaw_ == 0.0f) {
+    msg.yaw = -ros_msg->current_heading;
+  }
+  else {
+    msg.yaw = -yaw_;
+  }
 
   msg.csum = compute_checksum(buf, sizeof(msg) - 1);
 
