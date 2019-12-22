@@ -3,7 +3,7 @@
   <arg name="config_pkg" default="$(find vehicle_configs)"/>
   <arg name="odom_topic" default="odom"/>
 
-  <arg name="mavlink_param_file" default="$(arg config_pkg)/$(arg vehicle)/mavlink.yaml"/>
+  <arg name="serial_param_file" default="$(arg config_pkg)/$(arg vehicle)/serial.yaml"/>
 
   <group ns="$(arg vehicle)">
     <node pkg="simple_serial"
@@ -11,9 +11,7 @@
       type="simple_serial"
       output="screen"
       clear_params="true">
-      <param name="serial_device" value="/dev/ttyUSB0"/>
-      <param name="baud" value="921600"/>
-      <param name="full_odom" value="false"/>
+      <rosparam file="$(arg serial_param_file)"/>
       <remap from="~odom" to="vicon_odom"/>
     </node>
   </group>

@@ -7,13 +7,11 @@ int main(int argc, char **argv) {
 
   ros::NodeHandle n("~");
 
-  SimpleSerial serial;
-
-  if (!serial.initialize(n)) {
+  if (!SimpleSerial::instance.initialize(n)) {
     return 1;
   }
 
-  serial.loop();
+  SimpleSerial::instance.loop();
 
   return 0;
 }

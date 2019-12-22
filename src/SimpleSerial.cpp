@@ -5,6 +5,8 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <csignal>
+
 #include <geometry_utils/GeometryUtilsROS.h>
 #include <parameter_utils/ParameterUtils.h>
 
@@ -19,6 +21,8 @@
 namespace gu = geometry_utils;
 namespace gr = geometry_utils::ros;
 namespace pu = parameter_utils;
+
+SimpleSerial SimpleSerial::instance;
 
 bool SimpleSerial::initialize(const ros::NodeHandle& n) {
   if (!loadParameters(n)) {
@@ -57,8 +61,20 @@ bool SimpleSerial::loadParameters(const ros::NodeHandle& n) {
   return true;
 }
 
+void SimpleSerial::static_sighupHandler(int signum) {
+  ROS_INFO("Caught hangup.");
+  instance.sighupHandler(signum);
+}
+
+void SimpleSerial::sighupHandler(int signum) {
+  opened_ = false;
+  close(fd_);
+}
+
 bool SimpleSerial::openPort() {
-  fd_ = open(device_name_.c_str(), O_RDWR | O_NOCTTY);
+  fd_ = open(device_name_.c_str(), O_RDWR);
+
+  signal(SIGHUP, SimpleSerial::static_sighupHandler);
 
   if (fd_ < 0) {
     ROS_ERROR_THROTTLE(0.5, "Could not open serial port %s", device_name_.c_str());
@@ -73,7 +89,18 @@ bool SimpleSerial::openPort() {
     return false;
   }
 
-  tty.c_cflag = 7351; // Magic value from Python's setserial ?
+  ROS_INFO("Serial settings before are: %d %d %d %d", tty.c_cflag, tty.c_lflag, tty.c_oflag, tty.c_iflag);
+
+  // Magic values from Python's pyserial.
+  if (baud_ == 921600) {
+    tty.c_cflag = 7351;
+  }
+  else if (baud_ == 230400) {
+    tty.c_cflag = 7347;
+  }
+  else {
+    ROS_ERROR("Unsupported baud: FIX ME");
+  }
   //tty.c_cflag |= CS8; // 8 bits per byte
   //tty.c_cflag |= CREAD | CLOCAL; // read and no modem
   //tty.c_cflag &= ~PARENB; // no parity
@@ -87,10 +114,11 @@ bool SimpleSerial::openPort() {
   tty.c_cc[VTIME] = 1;
   tty.c_cc[VMIN] = 0;
 
+  // Does this even do anything?
   cfsetispeed(&tty, baud_);
   cfsetospeed(&tty, baud_);
 
-  ROS_INFO("Serial settings are: %d %d %d %d", tty.c_cflag, tty.c_lflag, tty.c_oflag, tty.c_iflag);
+  ROS_INFO("Serial settings after are: %d %d %d %d", tty.c_cflag, tty.c_lflag, tty.c_oflag, tty.c_iflag);
 
   if (tcsetattr(fd_, TCSANOW, &tty) != 0) {
     ROS_ERROR("SimpleSerial: Could not save termios settings on %s", device_name_.c_str());
@@ -150,8 +178,6 @@ bool SimpleSerial::read_n(uint8_t *buf, int to_read) {
       return false;
     }
     else if (ret == 0) {
-      opened_ = false;
-      close(fd_);
       return false;
     }
 
@@ -195,8 +221,6 @@ void SimpleSerial::loop() {
       continue;
     }
     else if (ret == 0) {
-      opened_ = false;
-      close(fd_);
       continue;
     }
 
@@ -213,8 +237,6 @@ void SimpleSerial::loop() {
       continue;
     }
     if (ret == 0) {
-      opened_ = false;
-      close(fd_);
       continue;
     }
 

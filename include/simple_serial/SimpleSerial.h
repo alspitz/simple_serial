@@ -16,10 +16,15 @@ class SimpleSerial {
     bool initialize(const ros::NodeHandle& n);
     void loop();
 
+    static SimpleSerial instance;
+
   private:
     bool openPort();
     bool loadParameters(const ros::NodeHandle& n);
     bool registerCallbacks(const ros::NodeHandle& n);
+
+    static void static_sighupHandler(int signum);
+    void sighupHandler(int signum);
 
     void odomCallback(const robot_msgs::OdomNoCov::ConstPtr& msg);
     void odomCallbackFull(const nav_msgs::Odometry::ConstPtr& msg);
