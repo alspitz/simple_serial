@@ -305,6 +305,11 @@ void SimpleSerial::loop() {
       ROS_WARN("Unsupported msg id: %d", msg_id);
     }
   }
+
+  rpm_sub_.shutdown();
+  casc_sub_.shutdown();
+  gains_sub_.shutdown();
+  odom_sub_.shutdown();
 }
 
 void SimpleSerial::odomCallback(const robot_msgs::OdomNoCov::ConstPtr& msg) {
