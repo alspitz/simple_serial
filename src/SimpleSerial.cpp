@@ -111,7 +111,7 @@ bool SimpleSerial::openPort() {
   tty.c_iflag = 0;
   tty.c_oflag = 0;
 
-  tty.c_cc[VTIME] = 1;
+  tty.c_cc[VTIME] = 0;
   tty.c_cc[VMIN] = 0;
 
   // Does this even do anything?
@@ -193,6 +193,8 @@ void SimpleSerial::loop() {
   static constexpr int max_msg_length = 100;
   uint8_t buf[max_msg_length];
 
+  ros::Rate rate(2000);
+
   while (1) {
     ros::spinOnce();
 
@@ -200,6 +202,8 @@ void SimpleSerial::loop() {
       ROS_INFO("Shutting down.");
       break;
     }
+
+    rate.sleep();
 
     if (!opened_) {
       ROS_WARN_THROTTLE(0.5, "FD is now closed. Attempting to reopen...");
