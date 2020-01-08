@@ -152,6 +152,8 @@ bool SimpleSerial::registerCallbacks(const ros::NodeHandle& n) {
   }
   casc_sub_ = ln.subscribe("cascaded_cmd", 1, &SimpleSerial::cascadedCommandCallback, this, ros::TransportHints().tcpNoDelay());
   gains_sub_ = ln.subscribe("cascaded_cmd_gains", 1, &SimpleSerial::cascadedCommandGainsCallback, this, ros::TransportHints().tcpNoDelay());
+  fl_cmd_sub_ = ln.subscribe("fl_cmd", 1, &SimpleSerial::flCommandCallback, this, ros::TransportHints().tcpNoDelay());
+  fl_gains_sub_ = ln.subscribe("fl_cmd_gains", 1, &SimpleSerial::flCommandGainsCallback, this, ros::TransportHints().tcpNoDelay());
   rpm_sub_ = ln.subscribe("rpm_cmd", 1, &SimpleSerial::rpmCallback, this, ros::TransportHints().tcpNoDelay());
   motors_service_ = ln.advertiseService("motors", &SimpleSerial::motorServiceCallback, this);
 
@@ -312,7 +314,10 @@ void SimpleSerial::loop() {
 
   rpm_sub_.shutdown();
   casc_sub_.shutdown();
+  fl_cmd_sub_.shutdown();
   gains_sub_.shutdown();
+  fl_gains_sub_.shutdown();
+
   odom_sub_.shutdown();
 }
 
@@ -383,6 +388,39 @@ void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand
   }
 }
 
+void SimpleSerial::flCommandCallback(const multirotor_control::FLCommand::ConstPtr& ros_msg) {
+  if (!opened_) {
+    return;
+  }
+
+  struct flcmd_msg msg;
+  uint8_t* buf = (uint8_t*)(&msg);
+
+  msg.magic = MAGICFULL;
+  msg.length = sizeof(msg);
+  msg.sequence = 0;
+  msg.msg_id = MSG_ID_FLCMD;
+
+  msg.timestamp = ros_msg->header.stamp.toNSec() / 1000;
+  msg.snap_ff[0] = ros_msg->snap_ff.x;
+  msg.snap_ff[1] = -ros_msg->snap_ff.y;
+  msg.snap_ff[2] = -ros_msg->snap_ff.z;
+  msg.v1_ilc = -ros_msg->v1_ilc;
+  msg.angacc_ilc[0] = ros_msg->angacc_ilc.x;
+  msg.angacc_ilc[1] = -ros_msg->angacc_ilc.y;
+  msg.angacc_ilc[2] = -ros_msg->angacc_ilc.z;
+  msg.desired_yaw = -ros_msg->desired_yaw;
+  msg.yaw = -yaw_;
+
+  msg.csum = compute_checksum(buf, sizeof(msg) - 1);
+
+  int ret = write(fd_, buf, sizeof(msg));
+  if (ret != sizeof(msg)) {
+    ROS_WARN("Failed to send cmd message: %d", ret);
+  }
+}
+
+
 void SimpleSerial::cascadedCommandGainsCallback(const quadrotor_msgs::CascadedCommandGains::ConstPtr& ros_msg) {
   if (!opened_) {
     return;
@@ -408,6 +446,36 @@ void SimpleSerial::cascadedCommandGainsCallback(const quadrotor_msgs::CascadedCo
   int ret = write(fd_, buf, sizeof(msg));
   if (ret != sizeof(msg)) {
     ROS_WARN("Failed to send gains message: %d", ret);
+  }
+}
+
+void SimpleSerial::flCommandGainsCallback(const multirotor_control::FLGains::ConstPtr& ros_msg) {
+  if (!opened_) {
+    return;
+  }
+
+  struct flgains_msg msg;
+  uint8_t* buf = (uint8_t*)(&msg);
+
+  msg.magic = MAGICFULL;
+  msg.length = sizeof(msg);
+  msg.sequence = 0;
+  msg.msg_id = MSG_ID_FLGAINS;
+
+  msg.k3[0] = ros_msg->k3.x;
+  msg.k3[1] = ros_msg->k3.y;
+  msg.k3[2] = ros_msg->k3.z;
+  msg.k4[0] = ros_msg->k4.x;
+  msg.k4[1] = ros_msg->k4.y;
+  msg.k4[2] = ros_msg->k4.z;
+  msg.yaw_kp = ros_msg->yaw_kp;
+  msg.yaw_kd = ros_msg->yaw_kd;
+
+  msg.csum = compute_checksum(buf, sizeof(msg) - 1);
+
+  int ret = write(fd_, buf, sizeof(msg));
+  if (ret != sizeof(msg)) {
+    ROS_WARN("Failed to send FL gains message: %d", ret);
   }
 }
 

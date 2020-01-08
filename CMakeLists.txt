@@ -6,6 +6,7 @@ find_package(catkin REQUIRED COMPONENTS
   robot_msgs
   roscpp
   geometry_utils
+  multirotor_control
   parameter_utils
   nav_msgs
   quadrotor_msgs

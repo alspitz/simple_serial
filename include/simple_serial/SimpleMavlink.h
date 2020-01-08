@@ -7,6 +7,8 @@
 #define MSG_ID_CMD 2
 #define MSG_ID_IMU 3
 #define MSG_ID_GAINS 4
+#define MSG_ID_FLCMD 5
+#define MSG_ID_FLGAINS 6
 
 #define META_SIZE 5
 
@@ -49,4 +51,20 @@ MSG_END
 MSG_START(gains)
   float kR[3];
   float kOm[3];
+MSG_END
+
+MSG_START(flcmd)
+  uint64_t timestamp;
+  float snap_ff[3];
+  float v1_ilc;
+  float angacc_ilc[3];
+  float desired_yaw;
+  float yaw;
+MSG_END
+
+MSG_START(flgains)
+  float k3[3];
+  float k4[3];
+  float yaw_kp;
+  float yaw_kd;
 MSG_END

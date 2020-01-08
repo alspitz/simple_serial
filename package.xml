@@ -11,10 +11,11 @@
 
   <build_depend>roscpp</build_depend>
   <build_depend>geometry_utils</build_depend>
-  <build_depend>parameter_utils</build_depend>
+  <build_depend>multirotor_control</build_depend>
   <build_depend>nav_msgs</build_depend>
+  <build_depend>parameter_utils</build_depend>
   <build_depend>quadrotor_msgs</build_depend>
-  <build_depend>quadrotor_srvs</build_depend>
+  <build_depend>quadrotor_msgs</build_depend>
   <build_depend>robot_msgs</build_depend>
 
   <run_depend>roscpp</run_depend>
