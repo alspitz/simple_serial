@@ -10,10 +10,9 @@
 #include <geometry_utils/GeometryUtilsROS.h>
 #include <parameter_utils/ParameterUtils.h>
 
+#include <multirotor_control/FLState.h>
 #include <quadrotor_msgs/RPMCommand.h>
 #include <simple_serial/IMUDebug.h>
-
-#include <simple_serial/SimpleMavlink.h>
 
 #include <linux/serial.h>
 #include <sys/ioctl.h>
@@ -159,42 +158,26 @@ bool SimpleSerial::registerCallbacks(const ros::NodeHandle& n) {
 
   imu_pub_ = ln.advertise<simple_serial::IMUDebug>("imu", 1, false);
   rpm_pub_ = ln.advertise<quadrotor_msgs::RPMCommand>("rpm", 1, false);
+  fls_pub_ = ln.advertise<multirotor_control::FLState>("flstate", 1, false);
 
   return true;
 }
 
-int compute_checksum(uint8_t *buf, int length) {
-  int csum = 0;
-  for (int i = 0; i < length; i++) {
-    csum += buf[i];
-  }
-  return csum;
+gu::Vec3 convertframe(const gu::Vec3& in) {
+  gu::Vec3 out;
+  out(0) =  in(0);
+  out(1) = -in(1);
+  out(2) = -in(2);
+  return out;
 }
 
-bool SimpleSerial::read_n(uint8_t *buf, int to_read) {
-  int n_read = 0;
-  while (n_read < to_read) {
-    int ret = read(fd_, buf, to_read - n_read);
-
-    if (ret < 0) {
-      return false;
-    }
-    else if (ret == 0) {
-      return false;
-    }
-
-    n_read += ret;
-    buf += ret;
-  }
-
-  return true;
+void SimpleSerial::reset() {
+  read_ptr_ = read_buf_;
+  read_state_ = MAGIC1;
+  to_read_ = 1;
 }
 
 void SimpleSerial::loop() {
-  // Just needs to be larger than the largest message possible.
-  static constexpr int max_msg_length = 100;
-  uint8_t buf[max_msg_length];
-
   ros::Rate rate(2000);
 
   while (1) {
@@ -219,96 +202,106 @@ void SimpleSerial::loop() {
       }
     }
 
-    // Read first magic
-    int ret = read(fd_, buf, 1);
-    if (ret < 0) {
-      ROS_WARN("Read failure: magic 1 (%d)", ret);
+    int ret = read(fd_, read_ptr_, to_read_);
+    if (ret < 0 || ret > to_read_) {
+      ROS_WARN("Read failure: %d", ret);
       perror("read failure: ");
-      continue;
-    }
-    else if (ret == 0) {
-      continue;
-    }
-
-    if (buf[0] != MAGIC) {
-      ROS_WARN("Unexpected byte");
-      continue;
-    }
-
-    // Read second magic
-    ret = read(fd_, buf + 1, 1);
-    if (ret < 0) {
-      ROS_WARN("Read failure: magic 2");
-      perror("read failure: ");
+      reset();
       continue;
     }
     if (ret == 0) {
       continue;
     }
 
-    if (buf[1] != MAGIC) {
-      ROS_WARN("Got only one magic!!!");
+    read_ptr_ += ret;
+    to_read_ -= ret;
+
+    if (to_read_) {
       continue;
     }
 
-    if (!read_n(buf + 2, META_SIZE - 2)) {
-      ROS_WARN("Read failure: meta (length, seq, and msg id)");
-      continue;
-    }
-    uint8_t length = buf[2];
-    uint8_t seq = buf[3];
-    uint8_t msg_id = buf[4];
-
-    if (length > max_msg_length) {
-      ROS_WARN("Invalid length: %d", length);
-      continue;
-    }
-
-    if (!read_n(buf + META_SIZE, length - META_SIZE)) {
-      ROS_WARN("Could not read message with ID %d and length %d", msg_id, length);
-      continue;
-    }
-
-    uint8_t csum_ours = compute_checksum(buf, length - 1);
-    if (csum_ours != buf[length - 1]) {
-      ROS_WARN("Checksum mismatch of (%d, %d, %d): %d vs %d", length, seq, msg_id, csum_ours, buf[length]);
-      continue;
-    }
-
-    if (msg_id == MSG_ID_RPM) {
-      if (length != sizeof(struct rpm_msg)) {
-        ROS_WARN("Length inconsistent: %d vs %lu!", length, sizeof(struct rpm_msg));
+    if (read_state_ == MAGIC1 || read_state_ == MAGIC2) {
+      if (read_buf_[read_state_] != MAGIC) {
+        reset();
+        ROS_WARN("Expected magic; did not get it.");
         continue;
       }
 
-      struct rpm_msg* rpm = (struct rpm_msg*)buf;
-
-      quadrotor_msgs::RPMCommand ros_msg;
-      ros_msg.header.stamp.fromNSec(rpm->timestamp * 1000);
-      for (int i = 0; i < 4; i++) {
-        ros_msg.motor_rpm[i] = rpm->rpm[i];
+      if (read_state_ == MAGIC1) {
+        read_state_ = MAGIC2;
+        to_read_ = 1;
       }
-      rpm_pub_.publish(ros_msg);
+      else {
+        read_state_ = META;
+        to_read_ = META_SIZE - 2;
+      }
     }
-
-    else if (msg_id == MSG_ID_IMU) {
-      if (length != sizeof(struct imu_msg)) {
-        ROS_WARN("Length inconsistent: %d vs %lu!", length, sizeof(struct imu_msg));
+    else if (read_state_ == META) {
+      length_ = read_buf_[2];
+      msg_id_ = read_buf_[4];
+      if (length_ > max_msg_length) {
+        ROS_ERROR("Invalid (too large) length: %d. Max is %d", length_, max_msg_length);
+        reset();
+        continue;
       }
 
-      struct imu_msg* imu = (struct imu_msg*)buf;
-
-      simple_serial::IMUDebug ros_msg;
-      ros_msg.header.stamp.fromNSec(imu->timestamp * 1000);
-      ros_msg.accel      = gr::toVector3(gu::Vector3(imu->accel     [0], imu->accel     [1], imu->accel     [2]));
-      ros_msg.accel_filt = gr::toVector3(gu::Vector3(imu->accel_filt[0], imu->accel_filt[1], imu->accel_filt[2]));
-      ros_msg.gyro       = gr::toVector3(gu::Vector3(imu->gyro      [0], imu->gyro      [1], imu->gyro      [2]));
-      ros_msg.gyro_filt  = gr::toVector3(gu::Vector3(imu->gyro_filt [0], imu->gyro_filt [1], imu->gyro_filt [2]));
-      ros_msg.euler = gr::toVector3(gu::Vector3(imu->roll, imu->pitch, yaw_));
-      imu_pub_.publish(ros_msg);
+      read_state_ = MSG;
+      to_read_ = length_ - META_SIZE;
     }
-    else {
-      ROS_WARN("Unsupported msg id: %d", msg_id);
+    else if (read_state_ == MSG) {
+      reset();
+
+      uint8_t csum_ours = compute_checksum(read_buf_, length_ - 1);
+      if (csum_ours != read_buf_[length_ - 1]) {
+        ROS_WARN("Checksum mismatch of (%d, %d): %d vs %d", length_, msg_id_, csum_ours, read_buf_[length_]);
+        continue;
+      }
+
+      if (msg_id_ == MSG_ID_rpm) {
+        if (!check_length<struct rpm_msg>()) {
+          continue;
+        }
+
+        struct rpm_msg* rpm = (struct rpm_msg*)read_buf_;
+        quadrotor_msgs::RPMCommand ros_msg;
+        ros_msg.header.stamp.fromNSec(rpm->timestamp * 1000);
+        for (int i = 0; i < 4; i++) {
+          ros_msg.motor_rpm[i] = rpm->rpm[i];
+        }
+        rpm_pub_.publish(ros_msg);
+      }
+      else if (msg_id_ == MSG_ID_imu) {
+        if (!check_length<struct imu_msg>()) {
+          continue;
+        }
+
+        struct imu_msg* imu = (struct imu_msg*)read_buf_;
+
+        simple_serial::IMUDebug ros_msg;
+        ros_msg.header.stamp.fromNSec(imu->timestamp * 1000);
+        ros_msg.accel      = gr::toVector3(convertframe(gu::Vector3(imu->accel     [0], imu->accel     [1], imu->accel     [2])));
+        ros_msg.accel_filt = gr::toVector3(convertframe(gu::Vector3(imu->accel_filt[0], imu->accel_filt[1], imu->accel_filt[2])));
+        ros_msg.gyro       = gr::toVector3(convertframe(gu::Vector3(imu->gyro      [0], imu->gyro      [1], imu->gyro      [2])));
+        ros_msg.gyro_filt  = gr::toVector3(convertframe(gu::Vector3(imu->gyro_filt [0], imu->gyro_filt [1], imu->gyro_filt [2])));
+        ros_msg.euler = gr::toVector3(gu::Vector3(imu->roll, -imu->pitch, yaw_));
+        imu_pub_.publish(ros_msg);
+      }
+      else if (msg_id_ == MSG_ID_flstate) {
+        if (!check_length<struct flstate_msg>()) {
+          continue;
+        }
+
+        struct flstate_msg* fls = (struct flstate_msg*)read_buf_;
+
+        multirotor_control::FLState ros_msg;
+        ros_msg.header.stamp.fromNSec(fls->timestamp * 1000);
+        ros_msg.u = -fls->u;
+        ros_msg.udot = -fls->udot;
+        fls_pub_.publish(ros_msg);
+      }
+      else {
+        ROS_WARN("Unsupported msg id: %d", msg_id_);
+      }
     }
   }
 
@@ -317,7 +310,6 @@ void SimpleSerial::loop() {
   fl_cmd_sub_.shutdown();
   gains_sub_.shutdown();
   fl_gains_sub_.shutdown();
-
   odom_sub_.shutdown();
 }
 
@@ -330,49 +322,31 @@ void SimpleSerial::odomCallbackFull(const nav_msgs::Odometry::ConstPtr& msg) {
 }
 
 void SimpleSerial::rpmCallback(const quadrotor_msgs::RPMCommand::ConstPtr& ros_msg) {
-  if (!opened_) {
-    return;
-  }
-
   struct rpm_msg msg;
-  uint8_t* buf = (uint8_t*)(&msg);
-
-  msg.magic = MAGICFULL;
-  msg.length = sizeof(msg);
-  msg.sequence = 0;
-  msg.msg_id = MSG_ID_RPM;
-
   msg.timestamp = ros_msg->header.stamp.toNSec() / 1000;
   for (int i = 0; i < 4; i++) {
     msg.rpm[i] = ros_msg->motor_rpm[i];
   }
-  msg.csum = compute_checksum(buf, sizeof(msg) - 1);
 
-  int ret = write(fd_, buf, sizeof(msg));
-  if (ret != sizeof(msg)) {
-    ROS_WARN("Failed to send cmd message: %d", ret);
-  }
+  send_msg(msg, MSG_ID_rpm);
 }
 
 void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand::ConstPtr& ros_msg) {
-  if (!opened_) {
-    return;
-  }
-
   struct cmd_msg msg;
-  uint8_t* buf = (uint8_t*)(&msg);
-
-  msg.magic = MAGICFULL;
-  msg.length = sizeof(msg);
-  msg.sequence = 0;
-  msg.msg_id = MSG_ID_CMD;
-
   msg.timestamp = ros_msg->header.stamp.toNSec() / 1000;
   msg.thrust = -ros_msg->thrust;
   msg.q[0] = ros_msg->orientation.w;
   msg.q[1] = ros_msg->orientation.x;
   msg.q[2] = -ros_msg->orientation.y;
   msg.q[3] = -ros_msg->orientation.z;
+
+  gu::Vec3 angvel = convertframe(gr::fromROS(ros_msg->angular_velocity));
+  gu::Vec3 angacc = convertframe(gr::fromROS(ros_msg->angular_acceleration));
+  for (int i = 0; i < 3; i++) {
+    msg.angvel[i] = angvel(i);
+    msg.angacc[i] = angacc(i);
+  }
+
   if (yaw_ == 0.0f) {
     msg.yaw = -ros_msg->current_heading;
   }
@@ -380,128 +354,60 @@ void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand
     msg.yaw = -yaw_;
   }
 
-  msg.csum = compute_checksum(buf, sizeof(msg) - 1);
-
-  int ret = write(fd_, buf, sizeof(msg));
-  if (ret != sizeof(msg)) {
-    ROS_WARN("Failed to send cmd message: %d", ret);
-  }
+  send_msg(msg, MSG_ID_cmd);
 }
 
 void SimpleSerial::flCommandCallback(const multirotor_control::FLCommand::ConstPtr& ros_msg) {
-  if (!opened_) {
-    return;
+  struct flcmd_msg msg;
+  msg.timestamp = ros_msg->header.stamp.toNSec() / 1000;
+
+  gu::Vec3 snap_ff = convertframe(gr::fromROS(ros_msg->snap_ff));
+  gu::Vec3 angacc_ilc = convertframe(gr::fromROS(ros_msg->angacc_ilc));
+
+  for (int i = 0; i < 3; i++) {
+    msg.snap_ff[i] = snap_ff(i);
+    msg.angacc_ilc[i] = angacc_ilc(i);
   }
 
-  struct flcmd_msg msg;
-  uint8_t* buf = (uint8_t*)(&msg);
-
-  msg.magic = MAGICFULL;
-  msg.length = sizeof(msg);
-  msg.sequence = 0;
-  msg.msg_id = MSG_ID_FLCMD;
-
-  msg.timestamp = ros_msg->header.stamp.toNSec() / 1000;
-  msg.snap_ff[0] = ros_msg->snap_ff.x;
-  msg.snap_ff[1] = -ros_msg->snap_ff.y;
-  msg.snap_ff[2] = -ros_msg->snap_ff.z;
   msg.v1_ilc = -ros_msg->v1_ilc;
-  msg.angacc_ilc[0] = ros_msg->angacc_ilc.x;
-  msg.angacc_ilc[1] = -ros_msg->angacc_ilc.y;
-  msg.angacc_ilc[2] = -ros_msg->angacc_ilc.z;
   msg.desired_yaw = -ros_msg->desired_yaw;
   msg.yaw = -yaw_;
 
-  msg.csum = compute_checksum(buf, sizeof(msg) - 1);
-
-  int ret = write(fd_, buf, sizeof(msg));
-  if (ret != sizeof(msg)) {
-    ROS_WARN("Failed to send cmd message: %d", ret);
-  }
+  send_msg(msg, MSG_ID_flcmd);
 }
 
 
 void SimpleSerial::cascadedCommandGainsCallback(const quadrotor_msgs::CascadedCommandGains::ConstPtr& ros_msg) {
-  if (!opened_) {
-    return;
-  }
-
   struct gains_msg msg;
-  uint8_t* buf = (uint8_t*)(&msg);
-
-  msg.magic = MAGICFULL;
-  msg.length = sizeof(msg);
-  msg.sequence = 0;
-  msg.msg_id = MSG_ID_GAINS;
-
-  msg.kR[0] = ros_msg->kR.x;
-  msg.kR[1] = ros_msg->kR.y;
-  msg.kR[2] = ros_msg->kR.z;
-  msg.kOm[0] = ros_msg->kOm.x;
-  msg.kOm[1] = ros_msg->kOm.y;
-  msg.kOm[2] = ros_msg->kOm.z;
-
-  msg.csum = compute_checksum(buf, sizeof(msg) - 1);
-
-  int ret = write(fd_, buf, sizeof(msg));
-  if (ret != sizeof(msg)) {
-    ROS_WARN("Failed to send gains message: %d", ret);
+  gu::Vec3 kR = gr::fromROS(ros_msg->kR);
+  gu::Vec3 kOm = gr::fromROS(ros_msg->kOm);
+  for (int i = 0; i < 3; i++) {
+    msg.kR[i] = kR(i);
+    msg.kOm[i] = kOm(i);
   }
+
+  send_msg(msg, MSG_ID_gains);
 }
 
 void SimpleSerial::flCommandGainsCallback(const multirotor_control::FLGains::ConstPtr& ros_msg) {
-  if (!opened_) {
-    return;
-  }
-
   struct flgains_msg msg;
-  uint8_t* buf = (uint8_t*)(&msg);
-
-  msg.magic = MAGICFULL;
-  msg.length = sizeof(msg);
-  msg.sequence = 0;
-  msg.msg_id = MSG_ID_FLGAINS;
-
-  msg.k3[0] = ros_msg->k3.x;
-  msg.k3[1] = ros_msg->k3.y;
-  msg.k3[2] = ros_msg->k3.z;
-  msg.k4[0] = ros_msg->k4.x;
-  msg.k4[1] = ros_msg->k4.y;
-  msg.k4[2] = ros_msg->k4.z;
+  gu::Vec3 k3 = gr::fromROS(ros_msg->k3);
+  gu::Vec3 k4 = gr::fromROS(ros_msg->k4);
+  for (int i = 0; i < 3; i++) {
+    msg.k3[i] = k3(i);
+    msg.k4[i] = k4(i);
+  }
   msg.yaw_kp = ros_msg->yaw_kp;
   msg.yaw_kd = ros_msg->yaw_kd;
 
-  msg.csum = compute_checksum(buf, sizeof(msg) - 1);
-
-  int ret = write(fd_, buf, sizeof(msg));
-  if (ret != sizeof(msg)) {
-    ROS_WARN("Failed to send FL gains message: %d", ret);
-  }
+  send_msg(msg, MSG_ID_flgains);
 }
 
 bool SimpleSerial::motorServiceCallback(quadrotor_srvs::Toggle::Request& mreq, quadrotor_srvs::Toggle::Response& mres) {
-  if (!opened_) {
-    return false;
-  }
-
   mres.status = mreq.enable;
 
   struct enable_msg msg;
-  uint8_t* buf = (uint8_t*)(&msg);
-  msg.magic = MAGICFULL;
-  msg.length = sizeof(msg);
-  msg.sequence = 0;
-  msg.msg_id = MSG_ID_ENABLE;
-
   msg.enable = mreq.enable;
 
-  msg.csum = compute_checksum(buf, sizeof(msg) - 1);
-
-  int ret = write(fd_, buf, sizeof(msg));
-  if (ret != sizeof(msg)) {
-    ROS_WARN("Failed to send motor state: %d", ret);
-    return false;
-  }
-
-  return true;
+  return send_msg(msg, MSG_ID_enable);
 }

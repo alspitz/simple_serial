@@ -12,6 +12,7 @@
 #include <quadrotor_msgs/RPMCommand.h>
 #include <quadrotor_srvs/Toggle.h>
 #include <robot_msgs/OdomNoCov.h>
+#include <simple_serial/SimpleMavlink.h>
 
 class SimpleSerial {
   public:
@@ -37,7 +38,7 @@ class SimpleSerial {
     void rpmCallback(const quadrotor_msgs::RPMCommand::ConstPtr& msg);
     bool motorServiceCallback(quadrotor_srvs::Toggle::Request& mreq, quadrotor_srvs::Toggle::Response& mres);
 
-    bool read_n(uint8_t *buf, int n_read);
+    void reset();
 
     std::string device_name_;
     int baud_;
@@ -45,6 +46,61 @@ class SimpleSerial {
     int fd_;
     bool opened_{false};
     float yaw_{0.0f};
+
+    static int compute_checksum(uint8_t *buf, int length) {
+      int csum = 0;
+      for (int i = 0; i < length; i++) {
+        csum += buf[i];
+      }
+      return csum;
+    }
+
+    template <class T>
+    bool check_length() {
+      if (length_ != sizeof(T)) {
+        ROS_WARN("Incorrect length: expected %lu, got %d", sizeof(T), length_);
+        return false;
+      }
+
+      return true;
+    }
+
+    template <class T>
+    bool send_msg(T msg, uint8_t msg_id) {
+      if (!opened_) {
+        return false;
+      }
+
+      uint8_t* buf = (uint8_t*)(&msg);
+      msg.magic = MAGICFULL;
+      msg.length = sizeof(T);
+      msg.sequence = 0;
+      msg.msg_id = msg_id;
+      msg.csum = compute_checksum(buf, sizeof(T) - 1);
+
+      int ret = write(fd_, buf, sizeof(T));
+      if (ret != sizeof(T)) {
+        ROS_WARN("Failed to send message: %d", ret);
+        return false;
+      }
+
+      return true;
+    }
+
+    enum parse_state {
+      MAGIC1,
+      MAGIC2,
+      META,
+      MSG
+    };
+
+    static constexpr int max_msg_length{70};
+    parse_state read_state_{MAGIC1};
+    int to_read_{1};
+    uint8_t* read_ptr_{0};
+    uint8_t length_{0};
+    uint8_t msg_id_{0};
+    uint8_t read_buf_[max_msg_length];
 
     ros::Subscriber rpm_sub_;
     ros::Subscriber casc_sub_;
@@ -56,6 +112,7 @@ class SimpleSerial {
 
     ros::Publisher imu_pub_;
     ros::Publisher rpm_pub_;
+    ros::Publisher fls_pub_;
 
     ros::ServiceServer motors_service_;
 };
