@@ -1,15 +1,12 @@
-#define MAGICFULL 0xfefe
 #define MAGIC 0xfe
-#define N_MAGIC 2
+#define N_MAGIC 1
 
-#define META_SIZE 5
+#define META_SIZE 2
 
 #define MSG_START(x, y) \
   static constexpr uint8_t MSG_ID_##x = y; \
   struct __attribute__ ((__packed__ )) x##_msg { \
-    uint16_t magic; \
-    uint8_t length; \
-    uint8_t sequence; \
+    uint8_t magic; \
     uint8_t msg_id;
 #define MSG_END \
     uint8_t csum; \

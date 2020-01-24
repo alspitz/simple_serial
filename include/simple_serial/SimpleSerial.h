@@ -72,9 +72,7 @@ class SimpleSerial {
       }
 
       uint8_t* buf = (uint8_t*)(&msg);
-      msg.magic = MAGICFULL;
-      msg.length = sizeof(T);
-      msg.sequence = 0;
+      msg.magic = MAGIC;
       msg.msg_id = msg_id;
       msg.csum = compute_checksum(buf, sizeof(T) - 1);
 
@@ -89,7 +87,6 @@ class SimpleSerial {
 
     enum parse_state {
       MAGIC1,
-      MAGIC2,
       META,
       MSG
     };
@@ -98,7 +95,7 @@ class SimpleSerial {
     parse_state read_state_{MAGIC1};
     int to_read_{1};
     uint8_t* read_ptr_{0};
-    uint8_t length_{0};
+    int length_{-1};
     uint8_t msg_id_{0};
     uint8_t read_buf_[max_msg_length];
 

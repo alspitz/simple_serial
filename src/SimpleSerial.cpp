@@ -177,6 +177,35 @@ void SimpleSerial::reset() {
   to_read_ = 1;
 }
 
+int get_length(uint8_t msg_id) {
+  if (msg_id == MSG_ID_rpm) {
+    return sizeof(struct rpm_msg);
+  }
+  if (msg_id == MSG_ID_enable) {
+    return sizeof(struct enable_msg);
+  }
+  if (msg_id == MSG_ID_cmd) {
+    return sizeof(struct cmd_msg);
+  }
+  if (msg_id == MSG_ID_imu) {
+    return sizeof(struct imu_msg);
+  }
+  if (msg_id == MSG_ID_gains) {
+    return sizeof(struct gains_msg);
+  }
+  if (msg_id == MSG_ID_flcmd) {
+    return sizeof(struct flcmd_msg);
+  }
+  if (msg_id == MSG_ID_flgains) {
+    return sizeof(struct flgains_msg);
+  }
+  if (msg_id == MSG_ID_flstate) {
+    return sizeof(struct flstate_msg);
+  }
+
+  return -1;
+}
+
 void SimpleSerial::loop() {
   ros::Rate rate(2000);
 
@@ -220,28 +249,23 @@ void SimpleSerial::loop() {
       continue;
     }
 
-    if (read_state_ == MAGIC1 || read_state_ == MAGIC2) {
+    if (read_state_ == MAGIC1) {
       if (read_buf_[read_state_] != MAGIC) {
         reset();
         ROS_WARN("Expected magic; did not get it.");
         continue;
       }
 
-      if (read_state_ == MAGIC1) {
-        read_state_ = MAGIC2;
-        to_read_ = 1;
-      }
-      else {
-        read_state_ = META;
-        to_read_ = META_SIZE - 2;
-      }
+      read_state_ = META;
+      to_read_ = META_SIZE - N_MAGIC;
     }
     else if (read_state_ == META) {
-      length_ = read_buf_[2];
-      msg_id_ = read_buf_[4];
-      if (length_ > max_msg_length) {
-        ROS_ERROR("Invalid (too large) length: %d. Max is %d", length_, max_msg_length);
+      msg_id_ = read_buf_[1];
+
+      length_ = get_length(msg_id_);
+      if (length_ < 0) {
         reset();
+        ROS_ERROR("Unrecognized msg id: %d", msg_id_);
         continue;
       }
 
@@ -258,10 +282,6 @@ void SimpleSerial::loop() {
       }
 
       if (msg_id_ == MSG_ID_rpm) {
-        if (!check_length<struct rpm_msg>()) {
-          continue;
-        }
-
         struct rpm_msg* rpm = (struct rpm_msg*)read_buf_;
         quadrotor_msgs::RPMCommand ros_msg;
         ros_msg.header.stamp.fromNSec(rpm->timestamp * 1000);
@@ -270,13 +290,9 @@ void SimpleSerial::loop() {
         }
         rpm_pub_.publish(ros_msg);
       }
+
       else if (msg_id_ == MSG_ID_imu) {
-        if (!check_length<struct imu_msg>()) {
-          continue;
-        }
-
         struct imu_msg* imu = (struct imu_msg*)read_buf_;
-
         simple_serial::IMUDebug ros_msg;
         ros_msg.header.stamp.fromNSec(imu->timestamp * 1000);
         ros_msg.accel      = gr::toVector3(convertframe(gu::Vector3(imu->accel     [0], imu->accel     [1], imu->accel     [2])));
@@ -286,19 +302,16 @@ void SimpleSerial::loop() {
         ros_msg.euler = gr::toVector3(gu::Vector3(imu->roll, -imu->pitch, yaw_));
         imu_pub_.publish(ros_msg);
       }
+
       else if (msg_id_ == MSG_ID_flstate) {
-        if (!check_length<struct flstate_msg>()) {
-          continue;
-        }
-
         struct flstate_msg* fls = (struct flstate_msg*)read_buf_;
-
         multirotor_control::FLState ros_msg;
         ros_msg.header.stamp.fromNSec(fls->timestamp * 1000);
         ros_msg.u = -fls->u;
         ros_msg.udot = -fls->udot;
         fls_pub_.publish(ros_msg);
       }
+
       else {
         ROS_WARN("Unsupported msg id: %d", msg_id_);
       }
