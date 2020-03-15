@@ -285,7 +285,13 @@ void SimpleSerial::loop() {
       if (msg_id_ == MSG_ID_rpm) {
         struct rpm_msg* rpm = (struct rpm_msg*)read_buf_;
         quadrotor_msgs::RPMCommand ros_msg;
-        ros_msg.header.stamp.fromNSec(rpm->timestamp * 1000);
+        try {
+          ros_msg.header.stamp.fromNSec(rpm->timestamp * 1000);
+        }
+        catch (const std::runtime_error& e) {
+          ROS_ERROR("RPM msg time stamp too big for time! %" PRIu64, rpm->timestamp);
+        }
+
         for (int i = 0; i < 4; i++) {
           ros_msg.motor_rpm[i] = rpm->rpm[i];
         }
@@ -295,7 +301,12 @@ void SimpleSerial::loop() {
       else if (msg_id_ == MSG_ID_imu) {
         struct imu_msg* imu = (struct imu_msg*)read_buf_;
         simple_serial::IMUDebug ros_msg;
-        ros_msg.header.stamp.fromNSec(imu->timestamp * 1000);
+        try {
+          ros_msg.header.stamp.fromNSec(imu->timestamp * 1000);
+        }
+        catch (const std::runtime_error& e) {
+          ROS_ERROR("IMU msg time stamp too big for time! %" PRIu64, imu->timestamp);
+        }
         ros_msg.accel      = gr::toVector3(convertframe(gu::Vector3(imu->accel     [0], imu->accel     [1], imu->accel     [2])));
         ros_msg.accel_filt = gr::toVector3(convertframe(gu::Vector3(imu->accel_filt[0], imu->accel_filt[1], imu->accel_filt[2])));
         ros_msg.gyro       = gr::toVector3(convertframe(gu::Vector3(imu->gyro      [0], imu->gyro      [1], imu->gyro      [2])));
@@ -307,7 +318,12 @@ void SimpleSerial::loop() {
       else if (msg_id_ == MSG_ID_flstate) {
         struct flstate_msg* fls = (struct flstate_msg*)read_buf_;
         multirotor_control::FLState ros_msg;
-        ros_msg.header.stamp.fromNSec(fls->timestamp * 1000);
+        try {
+          ros_msg.header.stamp.fromNSec(fls->timestamp * 1000);
+        }
+        catch (const std::runtime_error& e) {
+          ROS_ERROR("flstate msg time stamp too big for time! %" PRIu64, fls->timestamp);
+        }
         ros_msg.u = -fls->u;
         ros_msg.udot = -fls->udot;
         fls_pub_.publish(ros_msg);
