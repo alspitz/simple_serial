@@ -6,6 +6,7 @@
 
 #include <multirotor_control/FLCommand.h>
 #include <multirotor_control/FLGains.h>
+#include <multirotor_control/TVCommand.h>
 #include <nav_msgs/Odometry.h>
 #include <quadrotor_msgs/CascadedCommand.h>
 #include <quadrotor_msgs/CascadedCommandGains.h>
@@ -35,6 +36,7 @@ class SimpleSerial {
     void cascadedCommandGainsCallback(const quadrotor_msgs::CascadedCommandGains::ConstPtr& msg);
     void flCommandCallback(const multirotor_control::FLCommand::ConstPtr& msg);
     void flCommandGainsCallback(const multirotor_control::FLGains::ConstPtr& msg);
+    void tvCommandCallback(const multirotor_control::TVCommand::ConstPtr& msg);
     void rpmCallback(const quadrotor_msgs::RPMCommand::ConstPtr& msg);
     bool motorServiceCallback(quadrotor_srvs::Toggle::Request& mreq, quadrotor_srvs::Toggle::Response& mres);
 
@@ -104,6 +106,7 @@ class SimpleSerial {
     ros::Subscriber gains_sub_;
     ros::Subscriber fl_cmd_sub_;
     ros::Subscriber fl_gains_sub_;
+    ros::Subscriber tv_cmd_sub_;
     bool full_odom_{false};
     ros::Subscriber odom_sub_;
 

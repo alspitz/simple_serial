@@ -153,6 +153,7 @@ bool SimpleSerial::registerCallbacks(const ros::NodeHandle& n) {
   gains_sub_ = ln.subscribe("cascaded_cmd_gains", 1, &SimpleSerial::cascadedCommandGainsCallback, this, ros::TransportHints().tcpNoDelay());
   fl_cmd_sub_ = ln.subscribe("fl_cmd", 1, &SimpleSerial::flCommandCallback, this, ros::TransportHints().tcpNoDelay());
   fl_gains_sub_ = ln.subscribe("fl_cmd_gains", 1, &SimpleSerial::flCommandGainsCallback, this, ros::TransportHints().tcpNoDelay());
+  tv_cmd_sub_ = ln.subscribe("tv_cmd", 1, &SimpleSerial::tvCommandCallback, this, ros::TransportHints().tcpNoDelay());
   rpm_sub_ = ln.subscribe("rpm_cmd", 1, &SimpleSerial::rpmCallback, this, ros::TransportHints().tcpNoDelay());
   motors_service_ = ln.advertiseService("motors", &SimpleSerial::motorServiceCallback, this);
 
@@ -323,6 +324,7 @@ void SimpleSerial::loop() {
   fl_cmd_sub_.shutdown();
   gains_sub_.shutdown();
   fl_gains_sub_.shutdown();
+  tv_cmd_sub_.shutdown();
   odom_sub_.shutdown();
 }
 
@@ -415,6 +417,22 @@ void SimpleSerial::flCommandGainsCallback(const multirotor_control::FLGains::Con
 
   send_msg(msg, MSG_ID_flgains);
 }
+
+void SimpleSerial::tvCommandCallback(const multirotor_control::TVCommand::ConstPtr& ros_msg) {
+  struct tvcmd_msg msg;
+  msg.timestamp = ros_msg->header.stamp.toNSec() / 1000;
+  gu::Vec3 accel = convertframe(gr::fromROS(ros_msg->accel));
+  gu::Vec3 angacc = convertframe(gr::fromROS(ros_msg->angaccel));
+  for (int i = 0; i < 3; i++) {
+    msg.accel[i] = accel(i);
+    msg.angacc[i] = angacc(i);
+  }
+  msg.desired_yaw = -ros_msg->desired_yaw;
+  msg.yaw = -yaw_;
+
+  send_msg(msg, MSG_ID_tvcmd);
+}
+
 
 bool SimpleSerial::motorServiceCallback(quadrotor_srvs::Toggle::Request& mreq, quadrotor_srvs::Toggle::Response& mres) {
   mres.status = mreq.enable;

@@ -66,3 +66,11 @@ MSG_START(flstate, 7)
   float u;
   float udot;
 MSG_END
+
+MSG_START(tvcmd, 8)
+  uint64_t timestamp;
+  float accel[3];
+  float angacc[3];
+  float desired_yaw;
+  float yaw;
+MSG_END
