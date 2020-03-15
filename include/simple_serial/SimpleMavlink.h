@@ -9,7 +9,7 @@
     uint8_t magic; \
     uint8_t msg_id;
 #define MSG_END \
-    uint8_t csum; \
+    uint16_t csum; \
   };
 
 MSG_START(rpm, 0)

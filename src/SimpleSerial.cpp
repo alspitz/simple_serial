@@ -285,9 +285,10 @@ void SimpleSerial::loop() {
     else if (read_state_ == MSG) {
       reset();
 
-      uint8_t csum_ours = compute_checksum(read_buf_, length_ - 1);
-      if (csum_ours != read_buf_[length_ - 1]) {
-        ROS_WARN("Checksum mismatch of (%d, %d): %d vs %d", length_, msg_id_, csum_ours, read_buf_[length_]);
+      const uint16_t csum_ours = compute_checksum(read_buf_, length_ - 2);
+      const uint16_t csum_theirs = (read_buf_[length_ - 2] << 8) | read_buf_[length_ - 1];
+      if (csum_ours != csum_theirs) {
+        ROS_WARN("Checksum mismatch of (%d, %d): %d vs %d", length_, msg_id_, csum_ours, csum_theirs);
         continue;
       }
 

@@ -56,11 +56,17 @@ class SimpleSerial {
     ros::Time lasttime_;
     gu::Vec3 accel_;
 
-    static int compute_checksum(uint8_t *buf, int length) {
-      int csum = 0;
-      for (int i = 0; i < length; i++) {
+    static uint16_t compute_checksum(uint8_t *buf, int length) {
+      uint16_t csum = 0;
+      int i;
+      for (i = 0; i < length - 1; i += 2) {
+       csum += buf[i] | (buf[i + 1] << 8);
+      }
+
+      if (i < length) {
         csum += buf[i];
       }
+
       return csum;
     }
 
@@ -83,7 +89,10 @@ class SimpleSerial {
       uint8_t* buf = (uint8_t*)(&msg);
       msg.magic = MAGIC;
       msg.msg_id = msg_id;
-      msg.csum = compute_checksum(buf, sizeof(T) - 1);
+
+      uint16_t csum = compute_checksum(buf, sizeof(T) - 2);
+      buf[sizeof(T) - 2] = csum >> 8;
+      buf[sizeof(T) - 1] = csum & 0xff;
 
       int ret = write(fd_, buf, sizeof(T));
       if (ret != sizeof(T)) {
