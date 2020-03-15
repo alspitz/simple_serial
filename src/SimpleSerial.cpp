@@ -1,6 +1,7 @@
 #include <simple_serial/SimpleSerial.h>
 
 #include <fcntl.h>
+#include <inttypes.h>
 #include <string.h>
 #include <termios.h>
 #include <unistd.h>
@@ -345,11 +346,19 @@ void SimpleSerial::loop() {
 }
 
 void SimpleSerial::odomCallback(const robot_msgs::OdomNoCov::ConstPtr& msg) {
-  yaw_ = gu::getYaw(gr::fromROS(msg->pose.orientation));
+  processOdom(gu::getYaw(gr::fromROS(msg->pose.orientation)), msg->header.stamp, gr::fromROS(msg->twist.linear));
 }
 
 void SimpleSerial::odomCallbackFull(const nav_msgs::Odometry::ConstPtr& msg) {
-  yaw_ = gu::getYaw(gr::fromROS(msg->pose.pose.orientation));
+  processOdom(gu::getYaw(gr::fromROS(msg->pose.pose.orientation)), msg->header.stamp, gr::fromROS(msg->twist.twist.linear));
+}
+
+void SimpleSerial::processOdom(double yaw, ros::Time time, gu::Vec3 vel) {
+  yaw_ = yaw;
+
+  //accel_ = (vel - lastvel_) / (time - lasttime_).toSec();
+  lastvel_ = vel;
+  lasttime_ = time;
 }
 
 void SimpleSerial::rpmCallback(const quadrotor_msgs::RPMCommand::ConstPtr& ros_msg) {
@@ -376,6 +385,7 @@ void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand
   for (int i = 0; i < 3; i++) {
     msg.angvel[i] = angvel(i);
     msg.angacc[i] = angacc(i);
+    //msg.accel[i] = accel_(i);
   }
 
   if (yaw_ == 0.0f) {

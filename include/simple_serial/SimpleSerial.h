@@ -4,6 +4,7 @@
 
 #include <ros/ros.h>
 
+#include <geometry_utils/GeometryUtils.h>
 #include <multirotor_control/FLCommand.h>
 #include <multirotor_control/FLGains.h>
 #include <multirotor_control/TVCommand.h>
@@ -14,6 +15,8 @@
 #include <quadrotor_srvs/Toggle.h>
 #include <robot_msgs/OdomNoCov.h>
 #include <simple_serial/SimpleMavlink.h>
+
+namespace gu = geometry_utils;
 
 class SimpleSerial {
   public:
@@ -40,6 +43,7 @@ class SimpleSerial {
     void rpmCallback(const quadrotor_msgs::RPMCommand::ConstPtr& msg);
     bool motorServiceCallback(quadrotor_srvs::Toggle::Request& mreq, quadrotor_srvs::Toggle::Response& mres);
 
+    void processOdom(double yaw, ros::Time time, gu::Vec3 vel);
     void reset();
 
     std::string device_name_;
@@ -48,6 +52,9 @@ class SimpleSerial {
     int fd_;
     bool opened_{false};
     float yaw_{0.0f};
+    gu::Vec3 lastvel_;
+    ros::Time lasttime_;
+    gu::Vec3 accel_;
 
     static int compute_checksum(uint8_t *buf, int length) {
       int csum = 0;
