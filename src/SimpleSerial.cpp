@@ -377,15 +377,12 @@ void SimpleSerial::flCommandCallback(const multirotor_control::FLCommand::ConstP
   msg.timestamp = ros_msg->header.stamp.toNSec() / 1000;
 
   gu::Vec3 snap_ff = convertframe(gr::fromROS(ros_msg->snap_ff));
-  gu::Vec3 angacc_ilc = convertframe(gr::fromROS(ros_msg->angacc_ilc));
-
   for (int i = 0; i < 3; i++) {
     msg.snap_ff[i] = snap_ff(i);
-    msg.angacc_ilc[i] = angacc_ilc(i);
   }
 
-  msg.v1_ilc = -ros_msg->v1_ilc;
   msg.desired_yaw = -ros_msg->desired_yaw;
+  msg.desired_yawacc = -ros_msg->desired_yawacc;
   msg.yaw = -yaw_;
 
   send_msg(msg, MSG_ID_flcmd);
@@ -414,6 +411,7 @@ void SimpleSerial::flCommandGainsCallback(const multirotor_control::FLGains::Con
   }
   msg.yaw_kp = ros_msg->yaw_kp;
   msg.yaw_kd = ros_msg->yaw_kd;
+  msg.delay_const = ros_msg->delay_const;
 
   send_msg(msg, MSG_ID_flgains);
 }

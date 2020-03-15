@@ -48,9 +48,8 @@ MSG_END
 MSG_START(flcmd, 5)
   uint64_t timestamp;
   float snap_ff[3];
-  float v1_ilc;
-  float angacc_ilc[3];
   float desired_yaw;
+  float desired_yawacc;
   float yaw;
 MSG_END
 
@@ -59,6 +58,7 @@ MSG_START(flgains, 6)
   float k4[3];
   float yaw_kp;
   float yaw_kd;
+  float delay_const;
 MSG_END
 
 MSG_START(flstate, 7)
