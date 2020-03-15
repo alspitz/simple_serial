@@ -211,6 +211,8 @@ int get_length(uint8_t msg_id) {
 void SimpleSerial::loop() {
   ros::Rate rate(2000);
 
+  bool synced = true;
+
   while (1) {
     ros::spinOnce();
 
@@ -254,9 +256,14 @@ void SimpleSerial::loop() {
     if (read_state_ == MAGIC1) {
       if (read_buf_[read_state_] != MAGIC) {
         reset();
-        ROS_WARN("Expected magic; did not get it.");
+        if (synced) {
+          ROS_WARN("Expected magic; did not get it.");
+          synced = false;
+        }
         continue;
       }
+
+      synced = true;
 
       read_state_ = META;
       to_read_ = META_SIZE - N_MAGIC;
@@ -268,6 +275,7 @@ void SimpleSerial::loop() {
       if (length_ < 0) {
         reset();
         ROS_ERROR("Unrecognized msg id: %d", msg_id_);
+        synced = false;
         continue;
       }
 
