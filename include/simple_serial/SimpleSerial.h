@@ -14,6 +14,7 @@
 #include <quadrotor_msgs/RPMCommand.h>
 #include <quadrotor_srvs/Toggle.h>
 #include <robot_msgs/OdomNoCov.h>
+#include <simple_serial/FileRequest.h>
 #include <simple_serial/SimpleMavlink.h>
 
 namespace gu = geometry_utils;
@@ -41,6 +42,7 @@ class SimpleSerial {
     void flCommandGainsCallback(const multirotor_control::FLGains::ConstPtr& msg);
     void tvCommandCallback(const multirotor_control::TVCommand::ConstPtr& msg);
     void rpmCallback(const quadrotor_msgs::RPMCommand::ConstPtr& msg);
+    void fileRequestCallback(const simple_serial::FileRequest::ConstPtr& msg);
     bool motorServiceCallback(quadrotor_srvs::Toggle::Request& mreq, quadrotor_srvs::Toggle::Response& mres);
 
     void processOdom(double yaw, ros::Time time, gu::Vec3 vel);
@@ -126,9 +128,14 @@ class SimpleSerial {
     bool full_odom_{false};
     ros::Subscriber odom_sub_;
 
+    ros::Subscriber fr_sub_;
+
     ros::Publisher imu_pub_;
     ros::Publisher rpm_pub_;
     ros::Publisher fls_pub_;
 
     ros::ServiceServer motors_service_;
+
+    std::ofstream outfile;
+    int id_written{0};
 };

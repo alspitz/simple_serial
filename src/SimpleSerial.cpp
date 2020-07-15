@@ -156,6 +156,7 @@ bool SimpleSerial::registerCallbacks(const ros::NodeHandle& n) {
   fl_gains_sub_ = ln.subscribe("fl_cmd_gains", 1, &SimpleSerial::flCommandGainsCallback, this, ros::TransportHints().tcpNoDelay());
   tv_cmd_sub_ = ln.subscribe("tv_cmd", 1, &SimpleSerial::tvCommandCallback, this, ros::TransportHints().tcpNoDelay());
   rpm_sub_ = ln.subscribe("rpm_cmd", 1, &SimpleSerial::rpmCallback, this, ros::TransportHints().tcpNoDelay());
+  fr_sub_ = ln.subscribe("filerequest", 1, &SimpleSerial::fileRequestCallback, this);
   motors_service_ = ln.advertiseService("motors", &SimpleSerial::motorServiceCallback, this);
 
   imu_pub_ = ln.advertise<simple_serial::IMUDebug>("imu", 1, false);
@@ -204,6 +205,19 @@ int get_length(uint8_t msg_id) {
   if (msg_id == MSG_ID_flstate) {
     return sizeof(struct flstate_msg);
   }
+  if (msg_id == MSG_ID_tvcmd) {
+    return sizeof(struct tvcmd_msg);
+  }
+  if (msg_id == MSG_ID_ack) {
+    return sizeof(struct ack_msg);
+  }
+  if (msg_id == MSG_ID_file_request) {
+    return sizeof(struct file_request_msg);
+  }
+  if (msg_id == MSG_ID_file_chunk) {
+    return sizeof(struct file_chunk_msg);
+  }
+
 
   return -1;
 }
@@ -339,6 +353,33 @@ void SimpleSerial::loop() {
         fls_pub_.publish(ros_msg);
       }
 
+      else if (msg_id_ == MSG_ID_file_chunk) {
+        struct file_chunk_msg* msg = (struct file_chunk_msg*)read_buf_;
+
+        ROS_INFO("Received chunk with id %d and length %d", msg->id, msg->length);
+
+        struct ack_msg ack_msg;
+        ack_msg.id = msg->id;
+        send_msg(ack_msg, MSG_ID_ack);
+
+        if (msg->length == 0) {
+          outfile.close();
+        }
+
+        if (msg->id != id_written) {
+          if (msg->length > FILECHUNK_SIZE) {
+            ROS_WARN("Invalid file chunk length: %d", msg->length);
+          }
+          else {
+            outfile.write((const char *)(msg->data), msg->length);
+            id_written = msg->id;
+          }
+        }
+        else {
+          ROS_WARN("Duplicate chunk id %d", id_written);
+        }
+      }
+
       else {
         ROS_WARN("Unsupported msg id: %d", msg_id_);
       }
@@ -352,6 +393,7 @@ void SimpleSerial::loop() {
   fl_gains_sub_.shutdown();
   tv_cmd_sub_.shutdown();
   odom_sub_.shutdown();
+  fr_sub_.shutdown();
 }
 
 void SimpleSerial::odomCallback(const robot_msgs::OdomNoCov::ConstPtr& msg) {
@@ -466,6 +508,15 @@ void SimpleSerial::tvCommandCallback(const multirotor_control::TVCommand::ConstP
   send_msg(msg, MSG_ID_tvcmd);
 }
 
+void SimpleSerial::fileRequestCallback(const simple_serial::FileRequest::ConstPtr& ros_msg) {
+  struct file_request_msg msg;
+  ROS_INFO("[SimpleSerial] Received file request for file \"%s\"", ros_msg->filename.data.c_str());
+  strcpy(msg.filename, ros_msg->filename.data.c_str());
+  send_msg(msg, MSG_ID_file_request);
+
+  outfile.open("/home/alex/from_px4.log", std::ofstream::binary);
+  id_written = 0;
+}
 
 bool SimpleSerial::motorServiceCallback(quadrotor_srvs::Toggle::Request& mreq, quadrotor_srvs::Toggle::Response& mres) {
   mres.status = mreq.enable;

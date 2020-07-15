@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files(
   FILES
   IMUDebug.msg
+  FileRequest.msg
 )
 
 generate_messages(

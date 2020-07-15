@@ -3,6 +3,9 @@
 
 #define META_SIZE 2
 
+#define FILECHUNK_SIZE 64
+#define MAX_FILENAME_LENGTH 32
+
 #define MSG_START(x, y) \
   static constexpr uint8_t MSG_ID_##x = y; \
   struct __attribute__ ((__packed__ )) x##_msg { \
@@ -74,3 +77,18 @@ MSG_START(tvcmd, 8)
   float desired_yaw;
   float yaw;
 MSG_END
+
+MSG_START(ack, 9)
+  uint8_t id;
+MSG_END
+
+MSG_START(file_request, 10)
+  char filename[MAX_FILENAME_LENGTH];
+MSG_END
+
+MSG_START(file_chunk, 11)
+  uint8_t id;
+  uint8_t length;
+  uint8_t data[FILECHUNK_SIZE];
+MSG_END
+
