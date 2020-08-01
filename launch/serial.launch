@@ -1,7 +1,7 @@
 <launch>
   <arg name="vehicle" default="$(optenv RIS_VEHICLE_NAME danaus06)"/>
   <arg name="config_pkg" default="$(find vehicle_configs)"/>
-  <arg name="odom_topic" default="odom"/>
+  <arg name="odom_topic" default="vicon_odom"/>
 
   <arg name="serial_param_file" default="$(arg config_pkg)/$(arg vehicle)/serial_radio.yaml"/>
 
@@ -12,7 +12,7 @@
       output="screen"
       clear_params="true">
       <rosparam file="$(arg serial_param_file)"/>
-      <remap from="~odom" to="vicon_odom"/>
+      <remap from="~odom" to="$(arg odom_topic)"/>
     </node>
   </group>
 </launch>
