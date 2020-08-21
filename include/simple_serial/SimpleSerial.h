@@ -56,7 +56,6 @@ class SimpleSerial {
     float yaw_{0.0f};
     gu::Vec3 lastvel_;
     ros::Time lasttime_;
-    gu::Vec3 accel_;
 
     static uint16_t compute_checksum(uint8_t *buf, int length) {
       uint16_t csum = 0;

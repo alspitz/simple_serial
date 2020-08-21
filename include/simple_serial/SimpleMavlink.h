@@ -92,3 +92,6 @@ MSG_START(file_chunk, 11)
   uint8_t data[FILECHUNK_SIZE];
 MSG_END
 
+MSG_START(accel, 12)
+  float accel[3];
+MSG_END

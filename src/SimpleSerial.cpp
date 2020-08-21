@@ -166,7 +166,7 @@ bool SimpleSerial::registerCallbacks(const ros::NodeHandle& n) {
   return true;
 }
 
-gu::Vec3 convertframe(const gu::Vec3& in) {
+inline gu::Vec3 convertframe(const gu::Vec3& in) {
   gu::Vec3 out;
   out(0) =  in(0);
   out(1) = -in(1);
@@ -407,9 +407,21 @@ void SimpleSerial::odomCallbackFull(const nav_msgs::Odometry::ConstPtr& msg) {
 void SimpleSerial::processOdom(double yaw, ros::Time time, gu::Vec3 vel) {
   yaw_ = yaw;
 
-  //accel_ = (vel - lastvel_) / (time - lasttime_).toSec();
+  double dt = (time - lasttime_).toSec();
+  if (dt > 1e-4 && dt < 2.0) {
+    gu::Vec3 accel = convertframe((vel - lastvel_) / dt);
+
+    struct accel_msg msg;
+    for (int i = 0; i < 3; i++) {
+      msg.accel[i] = accel(i);
+    }
+
+    send_msg(msg, MSG_ID_accel);
+  }
+
   lastvel_ = vel;
   lasttime_ = time;
+
 }
 
 void SimpleSerial::rpmCallback(const quadrotor_msgs::RPMCommand::ConstPtr& ros_msg) {
@@ -436,7 +448,6 @@ void SimpleSerial::cascadedCommandCallback(const quadrotor_msgs::CascadedCommand
   for (int i = 0; i < 3; i++) {
     msg.angvel[i] = angvel(i);
     msg.angacc[i] = angacc(i);
-    //msg.accel[i] = accel_(i);
   }
 
   if (yaw_ == 0.0f) {
