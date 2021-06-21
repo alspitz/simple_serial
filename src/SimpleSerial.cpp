@@ -13,6 +13,7 @@
 
 #include <multirotor_control/FLState.h>
 #include <quadrotor_msgs/RPMCommand.h>
+#include <robot_msgs/GPSData.h>
 #include <simple_serial/IMUDebug.h>
 
 #include <linux/serial.h>
@@ -162,6 +163,7 @@ bool SimpleSerial::registerCallbacks(const ros::NodeHandle& n) {
   imu_pub_ = ln.advertise<simple_serial::IMUDebug>("imu", 1, false);
   rpm_pub_ = ln.advertise<quadrotor_msgs::RPMCommand>("rpm", 1, false);
   fls_pub_ = ln.advertise<multirotor_control::FLState>("flstate", 1, false);
+  gps_pub_ = ln.advertise<robot_msgs::GPSData>("gps", 1, false);
 
   return true;
 }
@@ -216,6 +218,9 @@ int get_length(uint8_t msg_id) {
   }
   if (msg_id == MSG_ID_file_chunk) {
     return sizeof(struct file_chunk_msg);
+  }
+  if (msg_id == MSG_ID_gps) {
+    return sizeof(struct gps_msg);
   }
 
 
@@ -378,6 +383,39 @@ void SimpleSerial::loop() {
         else {
           ROS_WARN("Duplicate chunk id %d", id_written);
         }
+      }
+
+      else if (msg_id_ == MSG_ID_gps) {
+        struct gps_msg* gps = (struct gps_msg*)read_buf_;
+        robot_msgs::GPSData ros_msg;
+        try {
+          ros_msg.header.stamp.fromNSec(gps->timestamp * 1000);
+        }
+        catch (const std::runtime_error& e) {
+          ROS_ERROR("GPS msg time stamp too big for time! %" PRIu64, gps->timestamp);
+        }
+        ros_msg.time_utc.fromNSec(gps->time_utc * 1000);
+        ros_msg.lat = gps->lat;
+        ros_msg.lon = gps->lon;
+        ros_msg.alt = gps->alt;
+        ros_msg.alt_ellipsoid = gps->alt_ellipsoid;
+        ros_msg.s_variance_m_s = gps->s_variance_m_s;
+        ros_msg.c_variance_rad = gps->c_variance_rad;
+        ros_msg.eph = gps->eph;
+        ros_msg.epv = gps->epv;
+        ros_msg.hdop = gps->hdop;
+        ros_msg.vdop = gps->vdop;
+        ros_msg.noise_per_ms = gps->noise_per_ms;
+        ros_msg.jamming_indicator = gps->jamming_indicator;
+        ros_msg.vel_m_s = gps->vel_m_s;
+        ros_msg.vel_ned[0] = gps->vel_ned[0];
+        ros_msg.vel_ned[1] = gps->vel_ned[1];
+        ros_msg.vel_ned[2] = gps->vel_ned[2];
+        ros_msg.cog_rad = gps->cog_rad;
+        ros_msg.fix_type = gps->fix_type;
+        ros_msg.vel_ned_valid = gps->vel_ned_valid;
+        ros_msg.satellites_used = gps->satellites_used;
+        gps_pub_.publish(ros_msg);
       }
 
       else {

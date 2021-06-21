@@ -132,6 +132,7 @@ class SimpleSerial {
     ros::Publisher imu_pub_;
     ros::Publisher rpm_pub_;
     ros::Publisher fls_pub_;
+    ros::Publisher gps_pub_;
 
     ros::ServiceServer motors_service_;
 

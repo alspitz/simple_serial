@@ -95,3 +95,26 @@ MSG_END
 MSG_START(accel, 12)
   float accel[3];
 MSG_END
+
+MSG_START(gps, 13)
+  uint64_t timestamp;
+  uint64_t time_utc;
+  int32_t lat;
+  int32_t lon;
+  int32_t alt;
+  int32_t alt_ellipsoid;
+  float s_variance_m_s;
+  float c_variance_rad;
+  float eph;
+  float epv;
+  float hdop;
+  float vdop;
+  int32_t noise_per_ms;
+  int32_t jamming_indicator;
+  float vel_m_s;
+  float vel_ned[3];
+  float cog_rad;
+  uint8_t fix_type;
+  bool vel_ned_valid;
+  uint8_t satellites_used;
+MSG_END

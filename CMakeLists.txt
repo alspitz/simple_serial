@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(simple_serial)
 
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 find_package(catkin REQUIRED COMPONENTS
   message_generation
   robot_msgs
@@ -72,22 +75,6 @@ target_link_libraries(${PROJECT_NAME}_node
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
 set_property(TARGET ${PROJECT_NAME}_node PROPERTY CXX_STANDARD 11)
 
-# add_executable(test_${PROJECT_NAME}
-#   src/test_${PROJECT_NAME}.cc
-# )
-# target_link_libraries(test_${PROJECT_NAME}
-#   ${PROJECT_NAME}
-# )
-# set_property(TARGET test_${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
-
-# add_executable(send_odometry_array
-#   src/send_odometry_array.cc
-# )
-# target_link_libraries(send_odometry_array
-#   ${PROJECT_NAME}
-# )
-# set_property(TARGET send_odometry_array PROPERTY CXX_STANDARD 11)
-
 install(TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_node
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
@@ -98,5 +85,3 @@ install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
   FILES_MATCHING PATTERN "*.h"
 )
-
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
